@@ -7,7 +7,7 @@ let allPlaces = [];
 let presetsData = null;
 let selectedCategories = new Set();
 let currentUserName = localStorage.getItem('leadHunter_userName') || '';
-let currentAppSecret = localStorage.getItem('leadHunter_appSecret') || 'dolar14';
+let currentAppSecret = localStorage.getItem('leadHunter_appSecret') || '';
 
 // DOM Elements: User & Header
 const currentUserNameEl = document.getElementById('currentUserName');
@@ -268,9 +268,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
 });
 
-// 1. Управління сесією користувача (ім'я менеджера)
+// 1. Управління сесією користувача (ім'я менеджера та ключ команди)
 function initUserSession() {
-  if (currentUserName && currentUserName.trim()) {
+  if (currentUserName && currentUserName.trim() && currentAppSecret && currentAppSecret.trim()) {
     currentUserNameEl.textContent = currentUserName;
     registerUserOnServer(currentUserName);
   } else {
@@ -280,9 +280,13 @@ function initUserSession() {
 
 function showUserNameModal() {
   userNameInput.value = currentUserName || '';
-  if (appSecretInput) appSecretInput.value = currentAppSecret || 'dolar14';
+  if (appSecretInput) appSecretInput.value = currentAppSecret || '';
   userNameModal.classList.remove('hidden');
-  setTimeout(() => userNameInput.focus(), 100);
+  if (!currentUserName) {
+    setTimeout(() => userNameInput.focus(), 100);
+  } else if (appSecretInput && !currentAppSecret) {
+    setTimeout(() => appSecretInput.focus(), 100);
+  }
 }
 
 function hideUserNameModal() {
@@ -302,10 +306,19 @@ async function registerUserOnServer(name) {
 userNameForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = userNameInput.value.trim();
-  if (!name) return;
+  if (!name) {
+    userNameInput.focus();
+    return;
+  }
 
   const secret = appSecretInput ? appSecretInput.value.trim() : '';
-  currentAppSecret = secret || 'dolar14';
+  if (!secret) {
+    showCustomNotification('Будь ласка, введіть ключ доступу команди (APP_SECRET)', 'warning');
+    if (appSecretInput) appSecretInput.focus();
+    return;
+  }
+
+  currentAppSecret = secret;
   localStorage.setItem('leadHunter_appSecret', currentAppSecret);
 
   currentUserName = name;
@@ -483,7 +496,7 @@ async function loadAdminStats() {
 async function loadSavedLeads() {
   try {
     const headers = {
-      'x-app-secret': currentAppSecret || 'dolar14'
+      'x-app-secret': currentAppSecret || ''
     };
     if (currentUserName) {
       headers['x-user-name'] = encodeURIComponent(currentUserName);
@@ -502,8 +515,13 @@ async function loadSavedLeads() {
         renderTableRows();
         statusText.textContent = `База: ${allPlaces.length} збережених лідів`;
       }
-    } else if (res.status === 401 && !currentUserName) {
-      showUserNameModal();
+    } else if (res.status === 401) {
+      if (!currentUserName || !currentAppSecret) {
+        showUserNameModal();
+      } else {
+        showCustomNotification('Ключ команди недійсний. Введіть актуальний пароль.', 'error');
+        showUserNameModal();
+      }
     }
   } catch (err) {
     console.error('Помилка завантаження лідів:', err);
@@ -726,7 +744,7 @@ async function handleStartSearch(e) {
       headers: { 
         'Content-Type': 'application/json',
         'x-user-name': encodeURIComponent(currentUserName),
-        'x-app-secret': currentAppSecret || 'dolar14'
+        'x-app-secret': currentAppSecret || ''
       },
       body: JSON.stringify({ 
         categories: categoriesList, 
@@ -735,7 +753,7 @@ async function handleStartSearch(e) {
         limit, 
         filterMode,
         userName: currentUserName,
-        appSecret: currentAppSecret || 'dolar14'
+        appSecret: currentAppSecret || ''
       })
     });
 
@@ -760,11 +778,11 @@ async function handleStartSearch(e) {
         });
       } else if (res.status === 401) {
         showProblemDialog({
-          title: 'Потрібна авторизація',
-          message: data.error || 'Необхідно вказати ім\'я для запуску пошуку.',
-          advice: 'Натисніть "Ввести ім\'я" або перевірте налаштування сесії.',
+          title: 'Потрібен ключ доступу',
+          message: data.error || 'Необхідно вказати ім\'я та дійсний ключ команди (APP_SECRET).',
+          advice: 'Введіть пароль команди, який вам повідомив адміністратор проєкту.',
           type: 'warning',
-          primaryBtnText: 'Ввести ім\'я',
+          primaryBtnText: 'Ввести ключ команди',
           onPrimary: showUserNameModal
         });
       } else {

@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.env
+.env.*
+*.zip
+*.log
+test_*.xlsx
+test_*.csv
+data/*.json

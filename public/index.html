@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="uk" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <title>Google Maps Lead Finder — Пошук бізнесів без сайту</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="h-full flex flex-col font-sans antialiased selection:bg-brand-500 selection:text-white bg-slate-950 text-slate-100">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-brand-500/20">
+          <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold tracking-tight text-white">Google Maps Lead Finder</h1>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              No-Website Hunter
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">Пошук бізнесів без власного сайту (з Instagram, Booking, CRM та без посилань)</p>
+        </div>
+      </div>
+
+      <!-- User & Admin Controls -->
+      <div class="flex items-center gap-2.5">
+        <!-- Current User Badge -->
+        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs text-slate-200">
+          <span class="text-indigo-400">👤</span>
+          <span id="currentUserName" class="font-semibold text-white max-w-[120px] truncate">Вхід...</span>
+          <button type="button" id="changeUserBtn" title="Змінити ім'я" class="text-slate-400 hover:text-indigo-300 text-[10px] underline ml-1">
+            Змінити
+          </button>
+        </div>
+
+        <!-- Admin Panel Button -->
+        <button 
+          type="button" 
+          id="openAdminBtn" 
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold transition"
+        >
+          <span>🔐</span>
+          <span class="hidden sm:inline">Адмін-панель</span>
+        </button>
+
+        <!-- System Status Indicator -->
+        <div id="statusIndicator" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300">
+          <span class="relative flex h-2 w-2">
+            <span id="statusPing" class="hidden animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span id="statusDot" class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span id="statusText">Готовий до запуску</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Search Controls Card -->
+    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl shadow-black/40 backdrop-blur">
+      <form id="searchForm" class="space-y-4">
+        
+        <!-- Category Row (Multi-select) -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                1. Категорії бізнесу (оберіть одну або кілька)
+              </label>
+              <span id="selectedCategoriesBadge" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-500/20 text-brand-300 border border-brand-500/30">
+                Обрано: 1
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="selectAllCatsBtn" class="text-xs text-brand-400 hover:text-brand-300 hover:underline transition">
+                ✓ Вибрати всі
+              </button>
+              <span class="text-slate-600">|</span>
+              <button type="button" id="clearAllCatsBtn" class="text-xs text-slate-400 hover:text-slate-200 hover:underline transition">
+                Очистити
+              </button>
+            </div>
+          </div>
+          
+          <!-- Category Multi-Select Pills -->
+          <div id="categoryPills" class="flex flex-wrap gap-2 mb-3">
+            <!-- Populated via JS -->
+          </div>
+
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </div>
+            <input 
+              type="text" 
+              id="categoryInput" 
+              placeholder="Додаткові власні категорії через кому (напр. піцерія, коворкінг, дитяча кімната)..."
+              class="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
+            >
+          </div>
+        </div>
+
+        <!-- Location Row -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+          <!-- Oblast Selector -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              2. Область
+            </label>
+            <select 
+              id="oblastSelect" 
+              class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-200 transition-all"
+            >
+              <option value="">Вся Україна / Довільна територія</option>
+              <!-- Populated via API -->
+            </select>
+          </div>
+
+          <!-- City / District -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              3. Місто / Район / Селище
+            </label>
+            <div class="relative">
+              <input 
+                type="text" 
+                id="cityInput" 
+                list="cityDatalist"
+                placeholder="Наприклад: Львів, Дрогобич, Оболонь..." 
+                class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-200 transition-all"
+              >
+              <datalist id="cityDatalist"></datalist>
+            </div>
+          </div>
+
+          <!-- Limit -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              4. Максимум бізнесів
+            </label>
+            <div class="flex gap-2">
+              <select 
+                id="limitSelect" 
+                class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-200"
+              >
+                <option value="20">20 бізнесів</option>
+                <option value="40" selected>40 бізнесів</option>
+                <option value="80">80 бізнесів</option>
+                <option value="150">150 бізнесів</option>
+                <option value="300">300 бізнесів (глибокий)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter Strategy Row -->
+        <div class="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              5. Критерій відбору сайтів
+            </label>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-950 border border-brand-500/50 text-white cursor-pointer hover:bg-slate-800 transition">
+                <input type="radio" name="filterMode" value="all_no_website" checked class="text-brand-500 focus:ring-brand-500">
+                <span>🎯 Без власного сайту (Немає + Соцмережі / Booking / CRM)</span>
+              </label>
+              <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700/60 text-slate-300 cursor-pointer hover:bg-slate-800 transition">
+                <input type="radio" name="filterMode" value="only_no_link" class="text-brand-500 focus:ring-brand-500">
+                <span>❌ Взагалі без посилань</span>
+              </label>
+              <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700/60 text-slate-300 cursor-pointer hover:bg-slate-800 transition">
+                <input type="radio" name="filterMode" value="only_third_party" class="text-brand-500 focus:ring-brand-500">
+                <span>📱 Тільки сторонні сервіси (Instagram, Booking тощо)</span>
+              </label>
+              <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700/60 text-slate-300 cursor-pointer hover:bg-slate-800 transition">
+                <input type="radio" name="filterMode" value="all" class="text-brand-500 focus:ring-brand-500">
+                <span>Всі підряд</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Buttons -->
+          <div class="flex items-center gap-3 w-full sm:w-auto pt-2 sm:pt-0">
+            <button 
+              type="button" 
+              id="stopBtn" 
+              class="hidden px-5 py-2.5 rounded-xl bg-rose-600/20 text-rose-300 border border-rose-500/30 hover:bg-rose-600/30 font-semibold text-sm transition flex items-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <rect x="5" y="5" width="10" height="10" rx="1.5"></rect>
+              </svg>
+              Зупинити
+            </button>
+
+            <button 
+              type="submit" 
+              id="startBtn" 
+              class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center gap-2"
+            >
+              <svg id="startIcon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+              <svg id="spinnerIcon" class="hidden animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>Почати збір лідів</span>
+            </button>
+          </div>
+        </div>
+
+      </form>
+    </div>
+
+    <!-- Live Progress Bar -->
+    <div id="progressContainer" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg">
+      <div class="flex items-center justify-between text-xs mb-2">
+        <div class="flex items-center gap-2">
+          <span class="animate-pulse flex h-2 w-2 rounded-full bg-brand-400"></span>
+          <span id="progressCurrentPlace" class="font-medium text-slate-200">Сканування Google Maps...</span>
+        </div>
+        <span id="progressStats" class="text-slate-400">Оброблено: 0 | Знайдено: 0</span>
+      </div>
+      <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+        <div id="progressBar" class="bg-gradient-to-r from-brand-500 to-indigo-400 h-full w-0 transition-all duration-300"></div>
+      </div>
+    </div>
+
+    <!-- Metric Counters -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+        <p class="text-[11px] text-slate-400 font-medium">🎯 Всього в базі</p>
+        <p id="countFound" class="text-xl font-bold text-white mt-0.5">0</p>
+      </div>
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+        <p class="text-[11px] text-slate-400 font-medium">⏳ Не дзвонили</p>
+        <p id="countPending" class="text-xl font-bold text-sky-400 mt-0.5">0</p>
+      </div>
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+        <p class="text-[11px] text-slate-400 font-medium">✅ Дзвонили</p>
+        <p id="countCalled" class="text-xl font-bold text-emerald-400 mt-0.5">0</p>
+      </div>
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+        <p class="text-[11px] text-slate-400 font-medium">🟡 Передзвонити</p>
+        <p id="countCallback" class="text-xl font-bold text-amber-400 mt-0.5">0</p>
+      </div>
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+        <p class="text-[11px] text-slate-400 font-medium">🔴 Немає адміна</p>
+        <p id="countNoAdmin" class="text-xl font-bold text-rose-400 mt-0.5">0</p>
+      </div>
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+        <p class="text-[11px] text-slate-400 font-medium">📞 З телефоном</p>
+        <p id="countWithPhone" class="text-xl font-bold text-indigo-400 mt-0.5">0</p>
+      </div>
+    </div>
+
+    <!-- Results Table & Export Card -->
+    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl shadow-xl shadow-black/40 overflow-hidden backdrop-blur flex flex-col">
+      
+      <!-- Table Header Toolbar -->
+      <div class="p-4 border-b border-slate-800 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-3 flex-1">
+          <!-- In-table search -->
+          <div class="relative flex-1 min-w-[200px] max-w-xs">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input 
+              type="text" 
+              id="tableSearch" 
+              placeholder="Швидкий пошук у базі..." 
+              class="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-700/80 rounded-lg text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-500 text-slate-200"
+            >
+          </div>
+
+          <!-- Call Status Filter Dropdown -->
+          <div class="flex items-center gap-1.5">
+            <label for="callStatusFilter" class="text-xs text-slate-400 font-medium">Статус дзвінка:</label>
+            <select 
+              id="callStatusFilter" 
+              class="px-2.5 py-1.5 bg-slate-950 border border-slate-700/80 rounded-lg text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500 font-medium"
+            >
+              <option value="all">Усі контакти (Всі)</option>
+              <option value="not_called">⏳ Не дзвонили</option>
+              <option value="called">✅ Дзвонили (Успішно)</option>
+              <option value="callback">🟡 Попросили передзвонити</option>
+              <option value="no_admin">🔴 Немає адміністратора</option>
+              <option value="any_called">📞 Будь-який контакт (Всі продзвонені)</option>
+            </select>
+          </div>
+
+          <!-- Filter only with phone -->
+          <label class="inline-flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none">
+            <input type="checkbox" id="phoneOnlyFilter" class="rounded bg-slate-950 border-slate-700 text-brand-500 focus:ring-brand-500">
+            <span>Лише з телефонами</span>
+          </label>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button 
+            id="copyPhonesBtn" 
+            title="Скопіювати всі номери телефонів у буфер"
+            class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+            </svg>
+            Скопіювати телефони
+          </button>
+
+          <button 
+            id="exportXlsxBtn" 
+            class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-medium transition flex items-center gap-1.5"
+          >
+            <svg class="w-3.5 h-3.5 text-emerald-400" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/>
+            </svg>
+            Excel (.xlsx)
+          </button>
+
+          <button 
+            id="exportCsvBtn" 
+            class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5"
+          >
+            CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Status Filter Pills Bar -->
+      <div class="px-4 py-2 border-b border-slate-800/60 bg-slate-950/50 flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-[11px] text-slate-400 font-semibold mr-1 flex items-center gap-1">
+          <svg class="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          Фільтр:
+        </span>
+        <button type="button" data-status-filter="all" class="quick-status-btn active px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand-500/20 text-brand-300 border border-brand-500/40 transition">
+          Всі контакти
+        </button>
+        <button type="button" data-status-filter="not_called" class="quick-status-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-900 text-slate-300 border border-slate-700/80 hover:bg-slate-800 transition flex items-center gap-1.5">
+          <span>⏳ Не дзвонили</span>
+          <span id="pillCountPending" class="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400">0</span>
+        </button>
+        <button type="button" data-status-filter="called" class="quick-status-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-900 text-slate-300 border border-slate-700/80 hover:bg-slate-800 transition flex items-center gap-1.5">
+          <span>✅ Дзвонили</span>
+          <span id="pillCountCalled" class="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-400">0</span>
+        </button>
+        <button type="button" data-status-filter="callback" class="quick-status-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-900 text-slate-300 border border-slate-700/80 hover:bg-slate-800 transition flex items-center gap-1.5">
+          <span>🟡 Попросили передзвонити</span>
+          <span id="pillCountCallback" class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-400">0</span>
+        </button>
+        <button type="button" data-status-filter="no_admin" class="quick-status-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-900 text-slate-300 border border-slate-700/80 hover:bg-slate-800 transition flex items-center gap-1.5">
+          <span>🔴 Немає адміністратора</span>
+          <span id="pillCountNoAdmin" class="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-950 text-rose-400">0</span>
+        </button>
+      </div>
+
+      <!-- Scrollable Table Body -->
+      <div class="overflow-x-auto min-h-[350px] max-h-[600px] overflow-y-auto">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead class="sticky top-0 bg-slate-950/90 backdrop-blur text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-800 z-10">
+            <tr>
+              <th class="py-3 px-4 w-12 text-center">№</th>
+              <th class="py-3 px-4">Назва бізнесу</th>
+              <th class="py-3 px-4">Категорія</th>
+              <th class="py-3 px-4 text-center">Статус дзвінка</th>
+              <th class="py-3 px-4">Номер телефону</th>
+              <th class="py-3 px-4">Статус веб-сайту</th>
+              <th class="py-3 px-4">Адреса</th>
+              <th class="py-3 px-4 text-center">Google Maps</th>
+            </tr>
+          </thead>
+          <tbody id="placesTableBody" class="divide-y divide-slate-800/60 text-slate-200">
+            <!-- Empty state -->
+            <tr id="emptyRow">
+              <td colspan="8" class="py-16 text-center text-slate-500">
+                <div class="flex flex-col items-center justify-center gap-2">
+                  <svg class="w-10 h-10 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                  </svg>
+                  <p class="text-sm font-medium">Результати ще відсутні</p>
+                  <p class="text-xs text-slate-600">Оберіть категорію та місто вище і натисніть «Почати збір лідів»</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Table Footer / Count -->
+      <div class="p-3 border-t border-slate-800/80 bg-slate-950/50 flex items-center justify-between text-xs text-slate-400">
+        <span id="tableShowingCount">Показано: 0 записів</span>
+        <span>Дані автоматично класифіковано за наявністю власного сайту</span>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Modal 1: User Login / Name Selection -->
+  <div id="userNameModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="text-center space-y-2">
+        <div class="w-12 h-12 rounded-2xl bg-brand-600/20 text-brand-400 flex items-center justify-center mx-auto text-2xl">
+          👋
+        </div>
+        <h3 class="text-lg font-bold text-white">Ласкаво просимо!</h3>
+        <p class="text-xs text-slate-400">
+          Введіть ваше ім'я або позивний, щоб фіксувати, хто з менеджерів телефонував клієнтам:
+        </p>
+      </div>
+
+      <form id="userNameForm" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+            Ваше ім'я / Позивний
+          </label>
+          <input 
+            type="text" 
+            id="userNameInput" 
+            required 
+            placeholder="Наприклад: Олексій, Марія, Менеджер 1..."
+            class="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+            <span>Пароль команди (APP_SECRET)</span>
+            <span class="text-[10px] text-slate-500 lowercase">за замовчуванням: dolar14</span>
+          </label>
+          <input 
+            type="password" 
+            id="appSecretInput" 
+            value="dolar14"
+            placeholder="dolar14"
+            class="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono"
+          >
+        </div>
+
+        <button 
+          type="submit" 
+          class="w-full py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-brand-500/25 transition"
+        >
+          Увійти та почати роботу
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Admin Panel -->
+  <div id="adminModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-6 my-8">
+      
+      <!-- Admin Login View -->
+      <div id="adminLoginView" class="space-y-4 max-w-sm mx-auto py-6">
+        <div class="text-center space-y-1">
+          <div class="w-12 h-12 rounded-2xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center mx-auto text-2xl">
+            🔐
+          </div>
+          <h3 class="text-lg font-bold text-white">Вхід в Адмін-панель</h3>
+          <p class="text-xs text-slate-400">Введіть облікові дані адміністратора</p>
+        </div>
+
+        <form id="adminLoginForm" class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Логін</label>
+            <input 
+              type="text" 
+              id="adminUsername" 
+              required 
+              placeholder="adminsonly" 
+              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Пароль</label>
+            <input 
+              type="password" 
+              id="adminPassword" 
+              required 
+              placeholder="••••••••" 
+              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+          </div>
+          <div id="adminLoginError" class="hidden text-xs text-rose-400 bg-rose-950/30 p-2 rounded-lg border border-rose-800/40"></div>
+          
+          <div class="flex gap-2 pt-2">
+            <button 
+              type="button" 
+              id="closeAdminLoginBtn" 
+              class="w-1/2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
+            >
+              Скасувати
+            </button>
+            <button 
+              type="submit" 
+              class="w-1/2 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-500/25 transition"
+            >
+              Увійти
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Admin Dashboard View (Visible after login) -->
+      <div id="adminDashboardView" class="hidden space-y-6">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🔐</span>
+            <div>
+              <h3 class="text-base font-bold text-white">Адмін-панель керування</h3>
+              <p class="text-xs text-slate-400">Статистика менеджерів та продзвонів у системі</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button 
+              type="button" 
+              id="refreshAdminStatsBtn" 
+              class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition"
+            >
+              🔄 Оновити
+            </button>
+            <button 
+              type="button" 
+              id="adminClearDatabaseBtn" 
+              title="Безповоротно видалити всю збережену базу лідів"
+              class="px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/40 text-xs font-medium transition flex items-center gap-1.5"
+            >
+              <svg class="w-3.5 h-3.5 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <span>Очистити базу лідів</span>
+            </button>
+            <button 
+              type="button" 
+              id="adminLogoutBtn" 
+              class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition"
+            >
+              Вийти
+            </button>
+            <button 
+              type="button" 
+              id="closeAdminBtn" 
+              class="text-slate-400 hover:text-white text-lg px-2"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <!-- Overview Mini-Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+            <p class="text-[11px] text-slate-400">👥 Всього менеджерів</p>
+            <p id="adminStatUsers" class="text-xl font-bold text-white mt-1">0</p>
+          </div>
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+            <p class="text-[11px] text-slate-400">🎯 Всього лідів</p>
+            <p id="adminStatLeads" class="text-xl font-bold text-indigo-400 mt-1">0</p>
+          </div>
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+            <p class="text-[11px] text-slate-400">📞 Здійснено дзвінків</p>
+            <p id="adminStatCalled" class="text-xl font-bold text-emerald-400 mt-1">0</p>
+          </div>
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
+            <p class="text-[11px] text-slate-400">⏳ Очікують дзвінка</p>
+            <p id="adminStatPending" class="text-xl font-bold text-sky-400 mt-1">0</p>
+          </div>
+        </div>
+
+        <!-- Users Table -->
+        <div class="space-y-2">
+          <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider">
+            👥 Рейтинг та активність менеджерів
+          </h4>
+          <div class="overflow-x-auto border border-slate-800 rounded-xl max-h-56 overflow-y-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead class="bg-slate-950 text-slate-400 sticky top-0 border-b border-slate-800">
+                <tr>
+                  <th class="py-2.5 px-3">№</th>
+                  <th class="py-2.5 px-3">Ім'я менеджера</th>
+                  <th class="py-2.5 px-3 text-center">📞 Зроблено дзвінків</th>
+                  <th class="py-2.5 px-3">Перший вхід</th>
+                  <th class="py-2.5 px-3">Остання активність</th>
+                </tr>
+              </thead>
+              <tbody id="adminUsersTableBody" class="divide-y divide-slate-800/60 text-slate-200">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Recent Calls Log -->
+        <div class="space-y-2">
+          <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider">
+            📋 Журнал останніх дзвінків
+          </h4>
+          <div class="overflow-x-auto border border-slate-800 rounded-xl max-h-56 overflow-y-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead class="bg-slate-950 text-slate-400 sticky top-0 border-b border-slate-800">
+                <tr>
+                  <th class="py-2.5 px-3">Заклад</th>
+                  <th class="py-2.5 px-3">Телефон</th>
+                  <th class="py-2.5 px-3">Хто дзвонив</th>
+                  <th class="py-2.5 px-3">Коли</th>
+                  <th class="py-2.5 px-3">Категорія</th>
+                </tr>
+              </thead>
+              <tbody id="adminCallsTableBody" class="divide-y divide-slate-800/60 text-slate-200">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Note / Callback Comment Modal -->
+  <div id="noteModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>📝</span> <span id="noteModalTitle">Коментар до дзвінка</span>
+        </h3>
+        <button id="closeNoteModalBtn" type="button" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+      <p id="noteModalSubtitle" class="text-xs text-slate-400">Вкажіть деталі: коли передзвонити, ім'я контакту або причину відсутності адміна:</p>
+      
+      <form id="noteModalForm" class="space-y-4">
+        <input type="hidden" id="noteModalLeadId">
+        <div>
+          <textarea 
+            id="noteModalInput" 
+            rows="3"
+            placeholder="Наприклад: Передзвонити завтра о 14:00, запитати керівника Олену..."
+            class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          ></textarea>
+        </div>
+        <div class="flex items-center justify-end gap-2">
+          <button 
+            type="button" 
+            id="cancelNoteModalBtn"
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+          >
+            Скасувати
+          </button>
+          <button 
+            type="submit" 
+            class="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-lg shadow-brand-500/25 transition"
+          >
+            Зберегти коментар
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 4: Custom Problem / Issue Dialog Modal -->
+  <div id="problemModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 border-t-4 border-t-rose-500">
+      <div class="flex items-start gap-4">
+        <div id="problemIconContainer" class="w-12 h-12 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0 text-2xl">
+          ⚠️
+        </div>
+        <div class="space-y-1 flex-1">
+          <h3 id="problemTitle" class="text-base font-bold text-white">Виникла проблема під час виконання</h3>
+          <p id="problemMessage" class="text-xs text-slate-300 leading-relaxed">Повідомлення про проблему...</p>
+        </div>
+        <button id="closeProblemModalBtn" type="button" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+
+      <div id="problemAdviceBox" class="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-1.5 text-xs">
+        <div class="font-semibold text-indigo-300 flex items-center gap-1.5">
+          <span>💡</span> <span>Рекомендовані дії:</span>
+        </div>
+        <div id="problemAdviceText" class="text-slate-400 text-[11px] leading-normal">
+          Інструкція вирішення проблеми...
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-2">
+        <button 
+          type="button" 
+          id="problemSecondaryBtn"
+          class="hidden px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+        >
+          Скасувати
+        </button>
+        <button 
+          type="button" 
+          id="problemPrimaryBtn"
+          class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-lg shadow-brand-500/25 transition"
+        >
+          Зрозуміло
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 5: Custom Confirmation Dialog Modal -->
+  <div id="confirmModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border-t-4 border-t-amber-500">
+      <div class="flex items-start gap-3.5">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 text-xl">
+          ⚠️
+        </div>
+        <div class="space-y-1">
+          <h3 id="confirmTitle" class="text-sm font-bold text-white">Підтвердження дії</h3>
+          <p id="confirmMessage" class="text-xs text-slate-300 leading-relaxed">Ви впевнені?</p>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button 
+          type="button" 
+          id="confirmCancelBtn"
+          class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+        >
+          Скасувати
+        </button>
+        <button 
+          type="button" 
+          id="confirmOkBtn"
+          class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition shadow-lg shadow-rose-600/25"
+        >
+          Підтвердити
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Toast Notifications Container -->
+  <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "number-prog",
+  "version": "1.0.0",
+  "description": "Програма для пошуку бізнесів на Google Maps без власного сайту (Node.js)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "cli": "node cli.js",
+    "test": "node test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "puppeteer-core": "^25.10.0",
+    "xlsx": "^0.18.5"
+  }
+}

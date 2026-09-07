@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: lead-hunter
+    env: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: ADMIN_USERNAME
+        value: adminsonly
+      - key: ADMIN_PASSWORD
+        value: dolar14uero
+      - key: APP_SECRET
+        value: dolar14

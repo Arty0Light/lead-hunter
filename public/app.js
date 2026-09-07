@@ -260,9 +260,124 @@ function showConfirmDialog({ title, message, okText = 'Підтвердити', 
   });
 }
 
+// 0.3 Локальне збереження та відновлення стану (Кеш лідів та форми для захисту від втрати при F5 / оновленні сторінки)
+function saveLocalLeads() {
+  try {
+    localStorage.setItem('leadHunter_savedLeads', JSON.stringify(allPlaces));
+  } catch (e) {
+    console.warn('Не вдалося зберегти ліди в localStorage:', e);
+  }
+}
+
+function loadLocalLeads() {
+  try {
+    const raw = localStorage.getItem('leadHunter_savedLeads');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Помилка читання localStorage:', e);
+  }
+  return [];
+}
+
+function saveSearchFormState() {
+  try {
+    const state = {
+      city: cityInput ? cityInput.value : '',
+      oblast: oblastSelect ? oblastSelect.value : '',
+      limit: limitSelect ? limitSelect.value : '40',
+      filterMode: document.querySelector('input[name="filterMode"]:checked')?.value || 'all_no_website',
+      categories: Array.from(selectedCategories)
+    };
+    localStorage.setItem('leadHunter_searchState', JSON.stringify(state));
+  } catch (e) {}
+}
+
+function restoreSearchFormState() {
+  try {
+    const raw = localStorage.getItem('leadHunter_searchState');
+    if (raw) {
+      const state = JSON.parse(raw);
+      if (state.city && cityInput) cityInput.value = state.city;
+      if (state.oblast && oblastSelect) oblastSelect.value = state.oblast;
+      if (state.limit && limitSelect) limitSelect.value = state.limit;
+      if (state.filterMode) {
+        const radio = document.querySelector(`input[name="filterMode"][value="${state.filterMode}"]`);
+        if (radio) radio.checked = true;
+      }
+      if (Array.isArray(state.categories) && state.categories.length > 0) {
+        selectedCategories = new Set(state.categories);
+      }
+    }
+  } catch (e) {}
+}
+
+function mergeServerAndLocalLeads(serverLeads) {
+  const map = new Map();
+
+  // Спочатку беремо наявні локальні ліди
+  allPlaces.forEach(lead => {
+    const key = lead.uniqueKey || (lead.phone && lead.phone !== 'Не вказано' ? `phone_${lead.phone}` : lead.name);
+    map.set(key, lead);
+  });
+
+  // Оновлюємо або додаємо з сервера (зберігаючи актуальні статуси дзвінків та нотатки)
+  serverLeads.forEach(sLead => {
+    const key = sLead.uniqueKey || (sLead.phone && sLead.phone !== 'Не вказано' ? `phone_${sLead.phone}` : sLead.name);
+    if (map.has(key)) {
+      const local = map.get(key);
+      const serverTime = new Date(sLead.updatedAt || sLead.calledAt || 0).getTime();
+      const localTime = new Date(local.updatedAt || local.calledAt || 0).getTime();
+      if (serverTime >= localTime) {
+        map.set(key, { ...local, ...sLead });
+      } else {
+        map.set(key, { ...sLead, ...local });
+      }
+    } else {
+      map.set(key, sLead);
+    }
+  });
+
+  allPlaces = Array.from(map.values());
+}
+
+async function syncLeadsToServer(leads) {
+  if (!leads || leads.length === 0) return;
+  try {
+    await fetch('/api/leads/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-app-secret': currentAppSecret || '',
+        'x-user-name': encodeURIComponent(currentUserName || 'User')
+      },
+      body: JSON.stringify({ leads })
+    });
+  } catch (e) {
+    console.warn('Помилка синхронізації з сервером:', e);
+  }
+}
+
 // Ініціалізація
 document.addEventListener('DOMContentLoaded', async () => {
   initUserSession();
+
+  // 1. Негайно відновлюємо ліди з локального сховища браузера (миттєве відображення без втрати)
+  const localLeads = loadLocalLeads();
+  if (localLeads.length > 0) {
+    allPlaces = localLeads;
+    updateCounters();
+    renderTableRows();
+    statusText.textContent = `Збережено: ${allPlaces.length} лідів`;
+  }
+
+  // 2. Відновлюємо налаштування форми пошуку (місто, категорія тощо)
+  restoreSearchFormState();
+
   await loadPresets();
   await loadSavedLeads();
   setupEventListeners();
@@ -509,11 +624,21 @@ async function loadSavedLeads() {
     const res = await fetch('/api/leads', { headers });
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data.leads) && data.leads.length > 0) {
-        allPlaces = data.leads;
-        updateCounters();
-        renderTableRows();
+      const serverLeads = Array.isArray(data.leads) ? data.leads : [];
+
+      // Розумне об'єднання даних сервера та локального сховища
+      mergeServerAndLocalLeads(serverLeads);
+      saveLocalLeads();
+      updateCounters();
+      renderTableRows();
+
+      if (allPlaces.length > 0) {
         statusText.textContent = `База: ${allPlaces.length} збережених лідів`;
+      }
+
+      // Якщо у клієнта є ліди, а на сервері пусто (після перезапуску сервера) — синхронізуємо!
+      if (allPlaces.length > 0 && serverLeads.length === 0) {
+        syncLeadsToServer(allPlaces);
       }
     } else if (res.status === 401) {
       if (!currentUserName || !currentAppSecret) {
@@ -536,7 +661,7 @@ async function loadPresets() {
 
     if (presetsData.categories) {
       categoryPillsContainer.innerHTML = '';
-      if (presetsData.categories.length > 0) {
+      if (presetsData.categories.length > 0 && selectedCategories.size === 0) {
         selectedCategories.add(presetsData.categories[0].query);
       }
 
@@ -601,6 +726,7 @@ function updateCategoriesBadge() {
   } else {
     selectedCategoriesBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20';
   }
+  saveSearchFormState();
 }
 
 function handleSelectAllCategories() {
@@ -641,6 +767,7 @@ oblastSelect.addEventListener('change', () => {
     });
     cityInput.value = oblast.center;
   }
+  saveSearchFormState();
 });
 
 function setupEventListeners() {
@@ -648,6 +775,12 @@ function setupEventListeners() {
   stopBtn.addEventListener('click', handleStopSearch);
   tableSearch.addEventListener('input', renderTableRows);
   phoneOnlyFilter.addEventListener('change', renderTableRows);
+
+  if (cityInput) cityInput.addEventListener('input', saveSearchFormState);
+  if (limitSelect) limitSelect.addEventListener('change', saveSearchFormState);
+  document.querySelectorAll('input[name="filterMode"]').forEach(r => {
+    r.addEventListener('change', saveSearchFormState);
+  });
   
   callStatusFilter.addEventListener('change', () => {
     updateQuickStatusPills(callStatusFilter.value);
@@ -840,6 +973,7 @@ function connectToStream(jobId, limitTarget, totalCats) {
     } else {
       allPlaces.unshift(place);
     }
+    saveLocalLeads();
     updateCounters();
     renderTableRows();
   });
@@ -926,7 +1060,9 @@ window.handleStatusChange = async function(id, newStatus) {
     lead.calledBy = null;
     lead.calledAt = null;
   }
+  lead.updatedAt = new Date().toISOString();
 
+  saveLocalLeads();
   updateCounters();
   renderTableRows();
 
@@ -952,6 +1088,7 @@ window.handleStatusChange = async function(id, newStatus) {
     lead.callStatus = previousStatus;
     lead.calledBy = previousCalledBy;
     lead.calledAt = previousCalledAt;
+    saveLocalLeads();
     updateCounters();
     renderTableRows();
     showToast('Не вдалося зафіксувати статус дзвінка на сервері. Перевірте зв’язок.', 'error', 'Помилка оновлення');
@@ -998,6 +1135,8 @@ async function handleSaveNoteModal(e) {
 
   const prevNotes = lead.notes;
   lead.notes = noteText;
+  lead.updatedAt = new Date().toISOString();
+  saveLocalLeads();
   renderTableRows();
   closeNoteModal();
 
@@ -1015,6 +1154,7 @@ async function handleSaveNoteModal(e) {
   } catch (err) {
     console.error('Помилка збереження коментаря:', err);
     lead.notes = prevNotes;
+    saveLocalLeads();
     renderTableRows();
     showToast('Не вдалося зберегти коментар на сервері. Спробуйте пізніше.', 'error', 'Помилка коментаря');
   }
@@ -1052,6 +1192,7 @@ async function handleClearDatabase() {
 
     if (res.ok) {
       allPlaces = [];
+      localStorage.removeItem('leadHunter_savedLeads');
       updateCounters();
       renderTableRows();
       loadAdminStats();

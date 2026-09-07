@@ -310,6 +310,16 @@ app.get('/api/leads', requireLeadAccess, (req, res) => {
   });
 });
 
+// 5.1 Синхронізація лідів із локального кешу клієнта (захист від втрати даних при перезапусках сервера)
+app.post('/api/leads/sync', requireLeadAccess, (req, res) => {
+  const { leads } = req.body || {};
+  if (Array.isArray(leads) && leads.length > 0) {
+    leadStorage.mergeLeads(leads);
+    return res.json({ success: true, total: leadStorage.getAllLeads().length });
+  }
+  res.json({ success: false, message: 'Немає лідів для синхронізації' });
+});
+
 // 6. Перемикання або оновлення статусу дзвінка з фіксацією імені менеджера (із санітизацією)
 app.post('/api/leads/:id/call', (req, res) => {
   const { id } = req.params;

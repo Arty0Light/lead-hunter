@@ -178,35 +178,85 @@ class GoogleMapsScraper extends EventEmitter {
               status: `[Категорія ${catIndex + 1}/${catList.length}: ${currentCat}] Обробка картки...`
             });
 
-            // Клік через DOM
+            // 1. Прокрутка картки у видиму зону
+            await this.page.evaluate(el => {
+              el.scrollIntoView({ behavior: 'instant', block: 'center' });
+            }, card);
+            await delay(150);
+
+            // 2. Реальний клік мишею по координатах картки
+            let clicked = false;
             try {
-              await this.page.evaluate(el => el.click(), card);
+              const box = await card.boundingBox();
+              if (box && box.width > 0 && box.height > 0) {
+                await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+                clicked = true;
+              }
             } catch (e) {}
 
-            // Очікування оновлення заголовка в панелі деталей
-            for (let waitStep = 0; waitStep < 10; waitStep++) {
-              await delay(180);
-              const isMatch = await this.page.evaluate((expectedName) => {
-                const h1 = document.querySelector('h1.DUwDvf');
-                if (!h1) return false;
-                const text = h1.innerText.trim();
-                return text && (expectedName.includes(text) || text.includes(expectedName.substring(0, 8)));
-              }, cardMeta.name);
-
-              if (isMatch) break;
+            if (!clicked) {
+              try {
+                await card.click({ delay: 30 });
+                clicked = true;
+              } catch (e) {
+                await this.page.evaluate(el => el.click(), card);
+              }
             }
 
-            // Збір деталей
+            // 3. Очікування оновлення та завантаження панелі деталей
+            let detailsLoaded = false;
+            for (let waitStep = 0; waitStep < 16; waitStep++) {
+              await delay(180);
+
+              const hasDetail = await this.page.evaluate(() => {
+                const phone = document.querySelector('button[data-item-id^="phone:"]');
+                const address = document.querySelector('button[data-item-id="address"]');
+                const website = document.querySelector('a[data-item-id="authority"]');
+                const h1 = document.querySelector('h1.DUwDvf');
+                return !!(phone || address || website || (h1 && h1.innerText.trim()));
+              });
+
+              if (hasDetail) {
+                detailsLoaded = true;
+                break;
+              }
+
+              // Повторний клік при повільному завантаженні (Render Free Tier)
+              if (waitStep === 6) {
+                try {
+                  const box = await card.boundingBox();
+                  if (box) {
+                    await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+                  } else {
+                    await this.page.evaluate(el => el.click(), card);
+                  }
+                } catch (e) {}
+              }
+            }
+
+            // 4. Надійний збір деталей із завантаженої картки
             const placeDetails = await this.page.evaluate((meta) => {
-              // Сайт
-              const websiteEl = document.querySelector('a[data-item-id="authority"]');
-              let website = websiteEl ? (websiteEl.getAttribute('href') || websiteEl.innerText?.trim()) : null;
+              // Назва з панелі деталей
+              const h1 = document.querySelector('h1.DUwDvf');
+              const realName = h1 ? h1.innerText.trim() : meta.name;
 
               // Телефон
-              const phoneEl = document.querySelector('button[data-item-id^="phone:"]');
-              let phone = phoneEl ? (phoneEl.getAttribute('data-item-id')?.replace('phone:tel:', '') || phoneEl.innerText?.trim()) : null;
+              let phone = null;
+              const phoneEl = document.querySelector('button[data-item-id^="phone:"], button[aria-label*="Телефон" i], button[aria-label*="Phone" i]');
+              if (phoneEl) {
+                const dataId = phoneEl.getAttribute('data-item-id') || '';
+                const aria = phoneEl.getAttribute('aria-label') || '';
+                const text = phoneEl.innerText?.trim() || '';
+                if (dataId.startsWith('phone:tel:')) {
+                  phone = dataId.replace('phone:tel:', '').trim();
+                } else if (aria.includes(':')) {
+                  phone = aria.split(':')[1]?.trim();
+                } else if (text) {
+                  phone = text.replace(/^\s*/, '').trim();
+                }
+              }
 
-              // Запасний пошук телефону в тексті
+              // Запасний пошук телефону в тексті деталей
               if (!phone) {
                 const allElements = Array.from(document.querySelectorAll('button, div[role="region"] div, a'));
                 for (const el of allElements) {
@@ -220,28 +270,44 @@ class GoogleMapsScraper extends EventEmitter {
               }
 
               // Адреса
-              const addressEl = document.querySelector('button[data-item-id="address"]');
-              let address = addressEl ? addressEl.innerText?.replace(/^\s*/, '').trim() : '';
+              let address = '';
+              const addressEl = document.querySelector('button[data-item-id="address"], button[aria-label*="Адреса" i], button[aria-label*="Address" i]');
+              if (addressEl) {
+                const aria = addressEl.getAttribute('aria-label') || '';
+                const text = addressEl.innerText?.trim() || '';
+                if (aria.toLowerCase().startsWith('адреса:')) {
+                  address = aria.replace(/^адреса:\s*/i, '').trim();
+                } else if (text) {
+                  address = text.replace(/^\s*/, '').trim();
+                }
+              }
+
+              // Веб-сайт
+              let website = null;
+              const websiteEl = document.querySelector('a[data-item-id="authority"], a[aria-label*="Сайт" i], a[aria-label*="Website" i]');
+              if (websiteEl) {
+                website = websiteEl.getAttribute('href') || websiteEl.innerText?.trim();
+              }
 
               // Рейтинг та відгуки
               let rating = '-';
               let reviewsCount = 0;
-              const ratingEl = document.querySelector('span.ceNzKf, span.MW4etd');
-              if (ratingEl) {
-                rating = ratingEl.innerText?.trim() || ratingEl.getAttribute('aria-label') || '-';
-              }
-              const reviewsEl = document.querySelector('span.UY7F9');
-              if (reviewsEl) {
-                const rText = reviewsEl.innerText?.trim() || '';
-                const rMatch = rText.match(/\d+/);
-                if (rMatch) reviewsCount = parseInt(rMatch[0], 10);
+              const ratingContainer = document.querySelector('div.F7nice, div[role="main"] span.ceNzKf');
+              if (ratingContainer) {
+                const rSpan = ratingContainer.querySelector('span.ceNzKf, span.MW4etd') || ratingContainer;
+                rating = rSpan.innerText?.trim() || rSpan.getAttribute('aria-label') || '-';
+                const revSpan = ratingContainer.querySelector('span:last-child') || document.querySelector('span.UY7F9');
+                if (revSpan) {
+                  const rMatch = (revSpan.innerText || '').match(/\d+/);
+                  if (rMatch) reviewsCount = parseInt(rMatch[0], 10);
+                }
               }
 
               const currentUrl = window.location.href;
               const mapsUrl = (currentUrl.includes('/maps/place/') ? currentUrl : meta.href) || meta.href || currentUrl;
 
               return {
-                name: meta.name,
+                name: realName || meta.name,
                 phone: phone || 'Не вказано',
                 website,
                 address: address || 'Адреса відсутня',
@@ -253,6 +319,15 @@ class GoogleMapsScraper extends EventEmitter {
 
             // Класифікація сайту
             const classified = classifyWebsite(placeDetails.website);
+
+            // Якщо картка взагалі не завантажилася (немає ні телефону, ні адреси, ні сайту) — пропускаємо для запобігання хибних лідів
+            if (placeDetails.phone === 'Не вказано' && placeDetails.address === 'Адреса відсутня' && !placeDetails.website) {
+              this.emit('skipped', {
+                name: placeDetails.name,
+                reason: 'Деталі картки не завантажились або відсутні дані'
+              });
+              continue;
+            }
 
             // Фільтрація
             let shouldInclude = false;

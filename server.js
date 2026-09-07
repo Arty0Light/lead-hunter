@@ -349,14 +349,14 @@ app.delete('/api/leads', requireAdmin, (req, res) => {
   res.json({ success: true, message: 'Базу лідів успішно очищено.' });
 });
 
-// 8. Запуск нового пошуку (з блокуванням паралельних запусків для захисту від перевантаження пам'яті)
+// 8. Запуск нового пошуку (автоматичне скасування попереднього підвислого пошуку)
 app.post('/api/search', requireLeadAccess, async (req, res) => {
-  // Перевірка наявності вже активного сканування (захист від вичерпання RAM / DoS)
-  const isAlreadyRunning = Array.from(activeJobs.values()).some(j => j.status === 'running');
-  if (isAlreadyRunning) {
-    return res.status(409).json({ 
-      error: 'Зараз уже виконується інше сканування. Будь ласка, зачекайте його завершення або зупиніть поточне перед запуском нового.' 
-    });
+  // Автоматично зупиняємо будь-яке попереднє сканування для уникнення блокування
+  for (const [id, j] of activeJobs.entries()) {
+    if (j.status === 'running') {
+      try { j.scraper.abort(); } catch(e) {}
+      j.status = 'aborted';
+    }
   }
 
   const { categories, category, oblast, city, customLocation, limit = 50, filterMode = 'all_no_website' } = req.body || {};
@@ -448,6 +448,11 @@ app.post('/api/search', requireLeadAccess, async (req, res) => {
       });
     } catch (err) {
       console.error(`[Job ${jobId}] Помилка під час пошуку:`, err.message);
+      job.status = 'error';
+    } finally {
+      if (job.status === 'running') {
+        job.status = 'completed';
+      }
     }
   })();
 
@@ -527,14 +532,33 @@ app.get('/api/stream/:jobId', (req, res) => {
   });
 });
 
-// 10. Зупинка завдання
-app.post('/api/stop/:jobId', (req, res) => {
-  const { jobId } = req.params;
-  const job = activeJobs.get(jobId);
-  if (!job) return res.status(404).json({ error: 'Завдання не знайдено' });
+// 10. Зупинка завдання (підтримує конкретний id або зупинку всіх активних)
+app.post(['/api/stop', '/api/stop/:jobId'], (req, res) => {
+  const jobId = req.params?.jobId;
+  let stoppedCount = 0;
+  if (!jobId || jobId === 'all' || jobId === 'null' || jobId === 'undefined' || jobId === 'current') {
+    for (const [id, j] of activeJobs.entries()) {
+      if (j.status === 'running') {
+        try { j.scraper.abort(); } catch(e) {}
+        j.status = 'aborted';
+        stoppedCount++;
+      }
+    }
+    return res.json({ success: true, message: `Зупинено ${stoppedCount} активних процесів.` });
+  }
 
-  job.scraper.abort();
-  job.status = 'aborted';
+  const job = activeJobs.get(jobId);
+  if (job) {
+    try { job.scraper.abort(); } catch(e) {}
+    job.status = 'aborted';
+  } else {
+    for (const [id, j] of activeJobs.entries()) {
+      if (j.status === 'running') {
+        try { j.scraper.abort(); } catch(e) {}
+        j.status = 'aborted';
+      }
+    }
+  }
   res.json({ success: true, message: 'Сканування зупинено.' });
 });
 

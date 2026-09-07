@@ -102,6 +102,14 @@ class GoogleMapsScraper extends EventEmitter {
         }
       });
 
+      // Встановлення cookies згоди Google для уникнення блокування у Європі (Render Frankfurt)
+      try {
+        await this.page.setCookie(
+          { name: 'SOCS', value: 'CAESEwgDEgk2OTQ0NTMwNzEaAmVuIAEaBgiA_LyaBg', domain: '.google.com', path: '/' },
+          { name: 'CONSENT', value: 'YES+cb.20230531-04-p0.uk+FX+917', domain: '.google.com', path: '/' }
+        );
+      } catch (e) {}
+
       // Послідовний пошук за кожною обраною категорією
       for (let catIndex = 0; catIndex < catList.length; catIndex++) {
         if (this.isAborted || foundPlaces.length >= limit) break;
@@ -120,11 +128,11 @@ class GoogleMapsScraper extends EventEmitter {
         // Обробка вікна згоди Google (cookies / consent) якщо з'явиться
         try {
           const consentButtons = await this.page.$$(
-            'button[aria-label*="Прийняти"], button[aria-label*="Accept"], form[action*="consent"] button'
+            'button[aria-label*="Прийняти" i], button[aria-label*="Accept" i], button[aria-label*="akzeptieren" i], button[aria-label*="Zustimmen" i], form[action*="consent"] button'
           );
           for (const btn of consentButtons) {
             await btn.click().catch(() => {});
-            await delay(500);
+            await delay(400);
           }
         } catch (e) {}
 

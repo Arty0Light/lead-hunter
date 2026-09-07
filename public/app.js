@@ -862,10 +862,16 @@ function connectToStream(jobId, limitTarget, totalCats) {
 }
 
 async function handleStopSearch() {
-  if (!currentJobId) return;
   try {
-    statusText.textContent = 'Зупинка...';
-    await fetch(`/api/stop/${currentJobId}`, { method: 'POST' });
+    statusText.textContent = 'Зупинка пошуку...';
+    const target = currentJobId || 'all';
+    await fetch(`/api/stop/${target}`, { 
+      method: 'POST',
+      headers: {
+        'x-app-secret': currentAppSecret || '',
+        'x-user-name': encodeURIComponent(currentUserName || 'User')
+      }
+    });
   } catch (err) {}
   setSearchingState(false);
   if (eventSource) eventSource.close();

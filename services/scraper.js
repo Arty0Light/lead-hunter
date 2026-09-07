@@ -83,14 +83,22 @@ class GoogleMapsScraper extends EventEmitter {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
       );
 
+      this.detailPage = await this.browser.newPage();
+      await this.detailPage.setViewport({ width: 1280, height: 900 });
+      await this.detailPage.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      );
+
       // Встановлення cookies згоди Google для уникнення блокування у Європі (Render Frankfurt)
       try {
         const domains = ['.google.com', '.google.de', '.google.com.ua'];
         for (const domain of domains) {
-          await this.page.setCookie(
-            { name: 'SOCS', value: 'CAESEwgDEgk2OTQ0NTMwNzEaAmVuIAEaBgiA_LyaBg', domain, path: '/' },
-            { name: 'CONSENT', value: 'YES+cb.20230531-04-p0.uk+FX+917', domain, path: '/' }
-          ).catch(() => {});
+          for (const p of [this.page, this.detailPage]) {
+            await p.setCookie(
+              { name: 'SOCS', value: 'CAESEwgDEgk2OTQ0NTMwNzEaAmVuIAEaBgiA_LyaBg', domain, path: '/' },
+              { name: 'CONSENT', value: 'YES+cb.20230531-04-p0.uk+FX+917', domain, path: '/' }
+            ).catch(() => {});
+          }
         }
       } catch (e) {}
 
@@ -150,25 +158,44 @@ class GoogleMapsScraper extends EventEmitter {
         }
 
         let scrollRetries = 0;
-        const maxScrollRetries = 4;
+        const maxScrollRetries = 5;
 
         while (!this.isAborted && foundPlaces.length < limit) {
-          const cardElements = await this.page.$$('a.hfpxzc');
-          if (cardElements.length === 0) break;
+          // Зчитуємо список видимих карток безпосередньо з DOM стрічки
+          const cardItems = await this.page.evaluate(() => {
+            const results = [];
+            const cards = document.querySelectorAll('div.Nv2PK');
+            for (const c of cards) {
+              const a = c.querySelector('a.hfpxzc');
+              if (!a) continue;
+              const name = a.getAttribute('aria-label') || a.innerText?.split('\n')[0] || '';
+              const href = a.getAttribute('href') || '';
+              if (!name || !href) continue;
+
+              // Fallback адреса та рейтинг прямо з картки у стрічці
+              let fallbackAddress = '';
+              let fallbackRating = '-';
+              const textLines = (c.innerText || '').split('\n');
+              for (const line of textLines) {
+                if (line.includes('·') || line.includes('вул') || line.includes('просп') || line.includes('площ') || line.includes('Str') || line.includes('street')) {
+                  const parts = line.split('·');
+                  fallbackAddress = parts[parts.length - 1]?.trim() || '';
+                }
+              }
+              const rSpan = c.querySelector('span.MW4etd, span.ceNzKf');
+              if (rSpan) fallbackRating = rSpan.innerText?.trim() || '-';
+
+              results.push({ name, href, fallbackAddress, fallbackRating });
+            }
+            return results;
+          });
+
+          if (cardItems.length === 0) break;
 
           let newCardFoundInIteration = false;
 
-          for (let i = 0; i < cardElements.length; i++) {
+          for (const cardMeta of cardItems) {
             if (this.isAborted || foundPlaces.length >= limit) break;
-
-            const card = cardElements[i];
-
-            // Метадані картки
-            const cardMeta = await this.page.evaluate(el => {
-              const name = el.getAttribute('aria-label') || '';
-              const href = el.getAttribute('href') || '';
-              return { name, href };
-            }, card);
 
             if (!cardMeta.name || processedNames.has(cardMeta.name)) {
               continue;
@@ -185,144 +212,113 @@ class GoogleMapsScraper extends EventEmitter {
               category: currentCat,
               categoryIndex: catIndex + 1,
               categoryTotal: catList.length,
-              status: `[Категорія ${catIndex + 1}/${catList.length}: ${currentCat}] Обробка картки...`
+              status: `[Категорія ${catIndex + 1}/${catList.length}: ${currentCat}] Збір деталей...`
             });
 
-            // 1. Прокрутка картки у видиму зону та DOM-клік для відкриття деталей
-            await this.page.evaluate(el => {
-              el.scrollIntoView({ behavior: 'instant', block: 'center' });
-              el.click();
-            }, card);
+            // Надійний збір деталей закладу напряму через окрему вкладку
+            let placeDetails = {
+              name: cardMeta.name,
+              phone: 'Не вказано',
+              website: null,
+              address: cardMeta.fallbackAddress || 'Адреса відсутня',
+              rating: cardMeta.fallbackRating || '-',
+              reviewsCount: 0,
+              mapsUrl: cardMeta.href
+            };
 
-            // 2. Очікування оновлення панелі деталей під поточну картку
-            let detailsLoaded = false;
-            for (let waitStep = 0; waitStep < 20; waitStep++) {
-              await delay(150);
+            if (cardMeta.href) {
+              try {
+                await this.detailPage.goto(cardMeta.href, { waitUntil: 'domcontentloaded', timeout: 15000 });
+                await this.detailPage.waitForSelector('h1.DUwDvf, [role="main"]', { timeout: 6000 }).catch(() => {});
 
-              const matched = await this.page.evaluate((expectedName) => {
-                const h1 = document.querySelector('h1.DUwDvf')?.innerText?.trim() || '';
-                const exp = expectedName.trim();
-                return h1 && (
-                  h1.toLowerCase() === exp.toLowerCase() ||
-                  h1.toLowerCase().includes(exp.toLowerCase()) ||
-                  exp.toLowerCase().includes(h1.toLowerCase())
-                );
-              }, cardMeta.name);
+                const fetched = await this.detailPage.evaluate((fallbackMeta) => {
+                  const h1 = document.querySelector('h1.DUwDvf');
+                  const realName = h1 ? h1.innerText.trim() : fallbackMeta.name;
 
-              if (matched) {
-                detailsLoaded = true;
-                break;
-              }
-
-              // Запасна спроба кліку
-              if (waitStep === 6 || waitStep === 14) {
-                try {
-                  await card.click().catch(() => {});
-                  await this.page.evaluate(el => el.click(), card).catch(() => {});
-                } catch (e) {}
-              }
-            }
-
-            // 4. Надійний збір деталей із завантаженої картки
-            const placeDetails = await this.page.evaluate((meta, cardEl) => {
-              // Назва з панелі деталей
-              const h1 = document.querySelector('h1.DUwDvf');
-              const realName = h1 ? h1.innerText.trim() : meta.name;
-
-              // Телефон
-              let phone = null;
-              const phoneEl = document.querySelector('button[data-item-id^="phone:"], button[aria-label*="Телефон" i], button[aria-label*="Phone" i], button[aria-label*="Telefon" i]');
-              if (phoneEl) {
-                const dataId = phoneEl.getAttribute('data-item-id') || '';
-                const aria = phoneEl.getAttribute('aria-label') || '';
-                const text = phoneEl.querySelector('.Io6YTe')?.innerText || phoneEl.innerText?.trim() || '';
-                if (dataId.startsWith('phone:tel:')) {
-                  phone = dataId.replace('phone:tel:', '').trim();
-                } else if (aria.includes(':')) {
-                  phone = aria.split(/:\s*/)[1]?.trim();
-                } else if (text) {
-                  phone = text.replace(/^[^0-9+]+/, '').trim();
-                }
-              }
-
-              // Запасний пошук телефону в тексті деталей
-              if (!phone) {
-                const allElements = Array.from(document.querySelectorAll('button, div[role="region"] div, a'));
-                for (const el of allElements) {
-                  const text = el.innerText || '';
-                  const phoneMatch = text.match(/(?:\+?380|0)\s*\(?\d{2}\)?\s*\d{3}[\s-]?\d{2}[\s-]?\d{2}/);
-                  if (phoneMatch && text.length < 35) {
-                    phone = phoneMatch[0].trim();
-                    break;
+                  // Телефон
+                  let phone = null;
+                  const phoneEl = document.querySelector('button[data-item-id^="phone:"], button[aria-label*="Телефон" i], button[aria-label*="Phone" i], button[aria-label*="Telefon" i]');
+                  if (phoneEl) {
+                    const dataId = phoneEl.getAttribute('data-item-id') || '';
+                    const aria = phoneEl.getAttribute('aria-label') || '';
+                    const text = phoneEl.querySelector('.Io6YTe')?.innerText || phoneEl.innerText?.trim() || '';
+                    if (dataId.startsWith('phone:tel:')) {
+                      phone = dataId.replace('phone:tel:', '').trim();
+                    } else if (aria.includes(':')) {
+                      phone = aria.split(/:\s*/)[1]?.trim();
+                    } else if (text) {
+                      phone = text.replace(/^[^0-9+]+/, '').trim();
+                    }
                   }
-                }
-              }
 
-              // Адреса
-              let address = '';
-              const addressEl = document.querySelector('button[data-item-id="address"], button[aria-label*="Адрес" i], button[aria-label*="Address" i], button[aria-label*="Adresse" i]');
-              if (addressEl) {
-                const aria = addressEl.getAttribute('aria-label') || '';
-                const text = addressEl.querySelector('.Io6YTe')?.innerText || addressEl.innerText?.trim() || '';
-                if (aria.includes(':')) {
-                  address = aria.split(/:\s*/)[1]?.trim();
-                } else if (text) {
-                  address = text.replace(/^[^a-zA-Zа-яА-ЯіІїЇєЄ0-9]+/, '').trim();
-                }
-              }
-
-              // Запасний збір адреси прямо з картки у стрічці пошуку
-              if (!address || address === 'Адреса відсутня') {
-                const container = cardEl ? (cardEl.closest('div.Nv2PK') || cardEl.parentElement) : null;
-                if (container) {
-                  const lines = (container.innerText || '').split('\n');
-                  for (const l of lines) {
-                    if (l.includes('·') || l.includes('вул') || l.includes('просп') || l.includes('площ') || l.includes('Str') || l.includes('street')) {
-                      const parts = l.split('·');
-                      const candidate = (parts[parts.length - 1] || '').trim();
-                      if (candidate.length > 4 && candidate.length < 80) {
-                        address = candidate;
+                  // Запасний пошук телефону в тексті
+                  if (!phone) {
+                    const allElements = Array.from(document.querySelectorAll('button, div[role="region"] div, a'));
+                    for (const el of allElements) {
+                      const text = el.innerText || '';
+                      const phoneMatch = text.match(/(?:\+?380|0)\s*\(?\d{2}\)?\s*\d{3}[\s-]?\d{2}[\s-]?\d{2}/);
+                      if (phoneMatch && text.length < 35) {
+                        phone = phoneMatch[0].trim();
                         break;
                       }
                     }
                   }
+
+                  // Адреса
+                  let address = '';
+                  const addressEl = document.querySelector('button[data-item-id="address"], button[aria-label*="Адрес" i], button[aria-label*="Address" i], button[aria-label*="Adresse" i]');
+                  if (addressEl) {
+                    const aria = addressEl.getAttribute('aria-label') || '';
+                    const text = addressEl.querySelector('.Io6YTe')?.innerText || addressEl.innerText?.trim() || '';
+                    if (aria.includes(':')) {
+                      address = aria.split(/:\s*/)[1]?.trim();
+                    } else if (text) {
+                      address = text.replace(/^[^a-zA-Zа-яА-ЯіІїЇєЄ0-9]+/, '').trim();
+                    }
+                  }
+
+                  // Веб-сайт
+                  let website = null;
+                  const websiteEl = document.querySelector('a[data-item-id="authority"], a[aria-label*="Сайт" i], a[aria-label*="Website" i]');
+                  if (websiteEl) {
+                    website = websiteEl.getAttribute('href') || websiteEl.innerText?.trim();
+                  }
+
+                  // Рейтинг та відгуки
+                  let rating = fallbackMeta.fallbackRating || '-';
+                  let reviewsCount = 0;
+                  const ratingContainer = document.querySelector('div.F7nice, div[role="main"] span.ceNzKf');
+                  if (ratingContainer) {
+                    const rSpan = ratingContainer.querySelector('span.ceNzKf, span.MW4etd') || ratingContainer;
+                    rating = rSpan.innerText?.trim() || rSpan.getAttribute('aria-label') || rating;
+                    const revSpan = ratingContainer.querySelector('span:last-child') || document.querySelector('span.UY7F9');
+                    if (revSpan) {
+                      const rMatch = (revSpan.innerText || '').match(/\d+/);
+                      if (rMatch) reviewsCount = parseInt(rMatch[0], 10);
+                    }
+                  }
+
+                  const currentUrl = window.location.href;
+                  const mapsUrl = (currentUrl.includes('/maps/place/') ? currentUrl : fallbackMeta.href) || fallbackMeta.href;
+
+                  return {
+                    name: realName || fallbackMeta.name,
+                    phone: phone || 'Не вказано',
+                    website,
+                    address: address || fallbackMeta.fallbackAddress || 'Адреса відсутня',
+                    rating,
+                    reviewsCount,
+                    mapsUrl
+                  };
+                }, cardMeta);
+
+                if (fetched) {
+                  placeDetails = fetched;
                 }
+              } catch (e) {
+                // Використовуємо fallback дані з картки стрічки
               }
-
-              // Веб-сайт
-              let website = null;
-              const websiteEl = document.querySelector('a[data-item-id="authority"], a[aria-label*="Сайт" i], a[aria-label*="Website" i]');
-              if (websiteEl) {
-                website = websiteEl.getAttribute('href') || websiteEl.innerText?.trim();
-              }
-
-              // Рейтинг та відгуки
-              let rating = '-';
-              let reviewsCount = 0;
-              const ratingContainer = document.querySelector('div.F7nice, div[role="main"] span.ceNzKf');
-              if (ratingContainer) {
-                const rSpan = ratingContainer.querySelector('span.ceNzKf, span.MW4etd') || ratingContainer;
-                rating = rSpan.innerText?.trim() || rSpan.getAttribute('aria-label') || '-';
-                const revSpan = ratingContainer.querySelector('span:last-child') || document.querySelector('span.UY7F9');
-                if (revSpan) {
-                  const rMatch = (revSpan.innerText || '').match(/\d+/);
-                  if (rMatch) reviewsCount = parseInt(rMatch[0], 10);
-                }
-              }
-
-              const currentUrl = window.location.href;
-              const mapsUrl = (currentUrl.includes('/maps/place/') ? currentUrl : meta.href) || meta.href || currentUrl;
-
-              return {
-                name: realName || meta.name,
-                phone: phone || 'Не вказано',
-                website,
-                address: address || 'Адреса відсутня',
-                rating,
-                reviewsCount,
-                mapsUrl
-              };
-            }, cardMeta, card);
+            }
 
             // Класифікація сайту
             const classified = classifyWebsite(placeDetails.website);
@@ -437,6 +433,7 @@ class GoogleMapsScraper extends EventEmitter {
         } catch (e) {}
         this.browser = null;
         this.page = null;
+        this.detailPage = null;
       }
     }
   }

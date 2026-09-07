@@ -65,6 +65,7 @@ const THIRD_PARTY_RULES = [
   { pattern: /business\.site/i, platform: 'Google Business Site', category: 'Картка Google Business', icon: '🏢' },
   { pattern: /top20\.ua/i, platform: 'Top20', category: 'Міський довідник', icon: '📖' },
   { pattern: /list\.in\.ua/i, platform: 'List.in.ua', category: 'Довідник підприємств', icon: '📑' },
+  { pattern: /(?:032|044|048|056|057|061|0522|0532|0312|0332|0342|0352|0362|0372|0382|0412|0432|0462|0472|0512|0542|0552)\.ua/i, platform: 'Міський портал (CitySites)', category: 'Міський довідник', icon: '🏙️' },
   { pattern: /prom\.ua/i, platform: 'Prom.ua', category: 'Маркетплейс', icon: '🛍️' },
   { pattern: /zakupka\.com/i, platform: 'Zakupka', category: 'Маркетплейс', icon: '🛒' },
   { pattern: /olx\.ua/i, platform: 'OLX', category: 'Дошка оголошень', icon: '📢' },

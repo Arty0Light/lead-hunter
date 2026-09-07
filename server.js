@@ -495,68 +495,6 @@ app.get('/api/debug-server', (req, res) => {
   });
 });
 
-// Діагностичний ендпоінт для тестування скрапінгу на Render
-app.get('/api/debug-render-scrape', async (req, res) => {
-  const puppeteer = require('puppeteer-core');
-  const { findBrowserExecutable } = require('./services/browserDetector');
-  let browser = null;
-  try {
-    const executablePath = findBrowserExecutable();
-    browser = await puppeteer.launch({
-      executablePath,
-      headless: "new",
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--lang=uk-UA',
-        '--window-size=1280,900'
-      ]
-    });
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 900 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
-    await page.goto('https://www.google.com/maps/search/%D0%BF%D1%96%D1%86%D0%B5%D1%80%D1%96%D1%8F+%D0%9B%D1%8C%D0%B2%D1%96%D0%B2?hl=uk', { waitUntil: 'domcontentloaded', timeout: 35000 });
-    await new Promise(r => setTimeout(r, 2000));
-    
-    const initialUrl = page.url();
-    const initialText = (await page.evaluate(() => document.body.innerText)).substring(0, 1000);
-    const cardsCount = await page.evaluate(() => document.querySelectorAll('a.hfpxzc').length);
-    
-    let clickResult = null;
-    if (cardsCount > 0) {
-      await page.evaluate(() => {
-        const c = document.querySelector('a.hfpxzc');
-        if (c) {
-          c.scrollIntoView();
-          c.click();
-        }
-      });
-      await new Promise(r => setTimeout(r, 3000));
-      clickResult = await page.evaluate(() => {
-        const h1 = document.querySelector('h1.DUwDvf')?.innerText;
-        const phone = document.querySelector('button[data-item-id^="phone:"]')?.innerText;
-        const address = document.querySelector('button[data-item-id="address"]')?.innerText;
-        const website = document.querySelector('a[data-item-id="authority"]')?.href;
-        const allButtons = Array.from(document.querySelectorAll('button')).map(b => b.getAttribute('aria-label') || b.getAttribute('data-item-id') || b.innerText).filter(Boolean).slice(0, 20);
-        return { h1, phone, address, website, allButtons };
-      });
-    }
-
-    res.json({
-      initialUrl,
-      afterClickUrl: page.url(),
-      cardsCount,
-      clickResult,
-      initialTextSnippet: initialText
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message, stack: err.stack });
-  } finally {
-    if (browser) await browser.close().catch(() => {});
-  }
-});
 
 // 9. Потоковий ендпоінт Server-Sent Events (SSE)
 app.get('/api/stream/:jobId', (req, res) => {

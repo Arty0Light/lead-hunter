@@ -71,17 +71,9 @@ class GoogleMapsScraper extends EventEmitter {
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
           '--disable-gpu',
-          '--disable-extensions',
-          '--disable-background-networking',
-          '--disable-default-apps',
-          '--disable-sync',
           '--lang=uk-UA',
-          '--window-size=1280,900',
-          '--js-flags=--max-old-space-size=256'
+          '--window-size=1280,900'
         ]
       });
 
@@ -93,10 +85,13 @@ class GoogleMapsScraper extends EventEmitter {
 
       // Встановлення cookies згоди Google для уникнення блокування у Європі (Render Frankfurt)
       try {
-        await this.page.setCookie(
-          { name: 'SOCS', value: 'CAESEwgDEgk2OTQ0NTMwNzEaAmVuIAEaBgiA_LyaBg', domain: '.google.com', path: '/' },
-          { name: 'CONSENT', value: 'YES+cb.20230531-04-p0.uk+FX+917', domain: '.google.com', path: '/' }
-        );
+        const domains = ['.google.com', '.google.de', '.google.com.ua'];
+        for (const domain of domains) {
+          await this.page.setCookie(
+            { name: 'SOCS', value: 'CAESEwgDEgk2OTQ0NTMwNzEaAmVuIAEaBgiA_LyaBg', domain, path: '/' },
+            { name: 'CONSENT', value: 'YES+cb.20230531-04-p0.uk+FX+917', domain, path: '/' }
+          ).catch(() => {});
+        }
       } catch (e) {}
 
       // Послідовний пошук за кожною обраною категорією
@@ -193,35 +188,34 @@ class GoogleMapsScraper extends EventEmitter {
               status: `[Категорія ${catIndex + 1}/${catList.length}: ${currentCat}] Обробка картки...`
             });
 
-            // 1. Прокрутка картки у видиму зону та DOM-клік для гарантованого відкриття деталей
+            // 1. Прокрутка картки у видиму зону та DOM-клік для відкриття деталей
             await this.page.evaluate(el => {
               el.scrollIntoView({ behavior: 'instant', block: 'center' });
               el.click();
             }, card);
 
-            // 2. Очікування оновлення панелі деталей (перевіряємо h1 або контакти)
+            // 2. Очікування оновлення панелі деталей під поточну картку
             let detailsLoaded = false;
-            for (let waitStep = 0; waitStep < 18; waitStep++) {
-              await delay(200);
+            for (let waitStep = 0; waitStep < 20; waitStep++) {
+              await delay(150);
 
-              const isMatch = await this.page.evaluate((expectedName) => {
-                const h1 = document.querySelector('h1.DUwDvf');
-                if (h1 && h1.innerText.trim().toLowerCase() === expectedName.toLowerCase()) {
-                  return true;
-                }
-                const phone = document.querySelector('button[data-item-id^="phone:"]');
-                const address = document.querySelector('button[data-item-id="address"]');
-                const website = document.querySelector('a[data-item-id="authority"]');
-                return !!(phone || address || website);
+              const matched = await this.page.evaluate((expectedName) => {
+                const h1 = document.querySelector('h1.DUwDvf')?.innerText?.trim() || '';
+                const exp = expectedName.trim();
+                return h1 && (
+                  h1.toLowerCase() === exp.toLowerCase() ||
+                  h1.toLowerCase().includes(exp.toLowerCase()) ||
+                  exp.toLowerCase().includes(h1.toLowerCase())
+                );
               }, cardMeta.name);
 
-              if (isMatch) {
+              if (matched) {
                 detailsLoaded = true;
                 break;
               }
 
-              // Запасна спроба кліку, якщо панель ще не відреагувала
-              if (waitStep === 6 || waitStep === 12) {
+              // Запасна спроба кліку
+              if (waitStep === 6 || waitStep === 14) {
                 try {
                   await card.click().catch(() => {});
                   await this.page.evaluate(el => el.click(), card).catch(() => {});
@@ -230,24 +224,24 @@ class GoogleMapsScraper extends EventEmitter {
             }
 
             // 4. Надійний збір деталей із завантаженої картки
-            const placeDetails = await this.page.evaluate((meta) => {
+            const placeDetails = await this.page.evaluate((meta, cardEl) => {
               // Назва з панелі деталей
               const h1 = document.querySelector('h1.DUwDvf');
               const realName = h1 ? h1.innerText.trim() : meta.name;
 
               // Телефон
               let phone = null;
-              const phoneEl = document.querySelector('button[data-item-id^="phone:"], button[aria-label*="Телефон" i], button[aria-label*="Phone" i]');
+              const phoneEl = document.querySelector('button[data-item-id^="phone:"], button[aria-label*="Телефон" i], button[aria-label*="Phone" i], button[aria-label*="Telefon" i]');
               if (phoneEl) {
                 const dataId = phoneEl.getAttribute('data-item-id') || '';
                 const aria = phoneEl.getAttribute('aria-label') || '';
-                const text = phoneEl.innerText?.trim() || '';
+                const text = phoneEl.querySelector('.Io6YTe')?.innerText || phoneEl.innerText?.trim() || '';
                 if (dataId.startsWith('phone:tel:')) {
                   phone = dataId.replace('phone:tel:', '').trim();
                 } else if (aria.includes(':')) {
-                  phone = aria.split(':')[1]?.trim();
+                  phone = aria.split(/:\s*/)[1]?.trim();
                 } else if (text) {
-                  phone = text.replace(/^\s*/, '').trim();
+                  phone = text.replace(/^[^0-9+]+/, '').trim();
                 }
               }
 
@@ -266,14 +260,32 @@ class GoogleMapsScraper extends EventEmitter {
 
               // Адреса
               let address = '';
-              const addressEl = document.querySelector('button[data-item-id="address"], button[aria-label*="Адреса" i], button[aria-label*="Address" i]');
+              const addressEl = document.querySelector('button[data-item-id="address"], button[aria-label*="Адрес" i], button[aria-label*="Address" i], button[aria-label*="Adresse" i]');
               if (addressEl) {
                 const aria = addressEl.getAttribute('aria-label') || '';
-                const text = addressEl.innerText?.trim() || '';
-                if (aria.toLowerCase().startsWith('адреса:')) {
-                  address = aria.replace(/^адреса:\s*/i, '').trim();
+                const text = addressEl.querySelector('.Io6YTe')?.innerText || addressEl.innerText?.trim() || '';
+                if (aria.includes(':')) {
+                  address = aria.split(/:\s*/)[1]?.trim();
                 } else if (text) {
-                  address = text.replace(/^\s*/, '').trim();
+                  address = text.replace(/^[^a-zA-Zа-яА-ЯіІїЇєЄ0-9]+/, '').trim();
+                }
+              }
+
+              // Запасний збір адреси прямо з картки у стрічці пошуку
+              if (!address || address === 'Адреса відсутня') {
+                const container = cardEl ? (cardEl.closest('div.Nv2PK') || cardEl.parentElement) : null;
+                if (container) {
+                  const lines = (container.innerText || '').split('\n');
+                  for (const l of lines) {
+                    if (l.includes('·') || l.includes('вул') || l.includes('просп') || l.includes('площ') || l.includes('Str') || l.includes('street')) {
+                      const parts = l.split('·');
+                      const candidate = (parts[parts.length - 1] || '').trim();
+                      if (candidate.length > 4 && candidate.length < 80) {
+                        address = candidate;
+                        break;
+                      }
+                    }
+                  }
                 }
               }
 
@@ -310,7 +322,7 @@ class GoogleMapsScraper extends EventEmitter {
                 reviewsCount,
                 mapsUrl
               };
-            }, cardMeta);
+            }, cardMeta, card);
 
             // Класифікація сайту
             const classified = classifyWebsite(placeDetails.website);

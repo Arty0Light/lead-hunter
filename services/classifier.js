@@ -45,7 +45,7 @@ const THIRD_PARTY_RULES = [
   // Ресторани, доставка, меню
   { pattern: /choiceqr\.com/i, platform: 'Choice QR Menu', category: 'QR-меню ресторану', icon: '🍽️' },
   { pattern: /joinposter\.com|posterpos\.com/i, platform: 'Poster POS Menu', category: 'Меню ресторану', icon: '📋' },
-  { pattern: /expirenza\.com/i, platform: 'Expirenza', category: 'Електронне меню', icon: '🍷' },
+  { pattern: /expirenza\.com|expz\.menu/i, platform: 'Expirenza QR Menu', category: 'Електронне меню', icon: '🍷' },
   { pattern: /reston\.ua/i, platform: 'RestOn', category: 'Бронювання столів', icon: '🍽️' },
   { pattern: /resto\.ua/i, platform: 'Resto.ua', category: 'Каталог ресторанів', icon: '🍴' },
   { pattern: /glovoapp\.com/i, platform: 'Glovo', category: 'Сервіс доставки', icon: '🛵' },

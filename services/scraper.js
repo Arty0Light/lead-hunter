@@ -177,9 +177,17 @@ class GoogleMapsScraper extends EventEmitter {
               let fallbackRating = '-';
               const textLines = (c.innerText || '').split('\n');
               for (const line of textLines) {
-                if (line.includes('·') || line.includes('вул') || line.includes('просп') || line.includes('площ') || line.includes('Str') || line.includes('street')) {
+                const lower = line.toLowerCase();
+                if (lower.includes('відчиняється') || lower.includes('зачинено') || lower.includes('open') || lower.includes('closed') || lower.includes('цілодобово')) {
+                  continue;
+                }
+                if (line.includes('·') || lower.includes('вул') || lower.includes('просп') || lower.includes('площ') || lower.includes('пров') || lower.includes('str') || lower.includes('street')) {
                   const parts = line.split('·');
-                  fallbackAddress = parts[parts.length - 1]?.trim() || '';
+                  const candidate = parts[parts.length - 1]?.trim() || '';
+                  if (candidate.length > 3 && !candidate.toLowerCase().includes('відчиняється') && !candidate.toLowerCase().includes('зачинено')) {
+                    fallbackAddress = candidate;
+                    break;
+                  }
                 }
               }
               const rSpan = c.querySelector('span.MW4etd, span.ceNzKf');

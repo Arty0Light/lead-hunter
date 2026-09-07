@@ -405,6 +405,16 @@ app.post('/api/search', requireLeadAccess, async (req, res) => {
     keysToDelete.forEach(k => activeJobs.delete(k));
   }
 
+  // Зупиняємо будь-який попередній пошук для звільнення RAM (Render 512MB limit)
+  for (const [existingId, existingJob] of activeJobs.entries()) {
+    if (existingJob.status === 'running') {
+      try {
+        if (existingJob.scraper) existingJob.scraper.abort();
+      } catch (e) {}
+      existingJob.status = 'cancelled';
+    }
+  }
+
   const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const scraper = new GoogleMapsScraper();
 
@@ -436,8 +446,9 @@ app.post('/api/search', requireLeadAccess, async (req, res) => {
         job.status = 'completed';
       });
 
-      scraper.on('error', () => {
+      scraper.on('error', (err) => {
         job.status = 'error';
+        job.error = err ? (err.message || String(err)) : 'Unknown error';
       });
 
       await scraper.search({
@@ -449,6 +460,7 @@ app.post('/api/search', requireLeadAccess, async (req, res) => {
     } catch (err) {
       console.error(`[Job ${jobId}] Помилка під час пошуку:`, err.message);
       job.status = 'error';
+      job.error = err ? (err.message || String(err)) : 'Unknown error';
     } finally {
       if (job.status === 'running') {
         job.status = 'completed';
@@ -462,6 +474,24 @@ app.post('/api/search', requireLeadAccess, async (req, res) => {
     categories: job.categories,
     location: job.location,
     limit: job.limit
+  });
+});
+
+// Ендпоінт для діагностики стану сервера
+app.get('/api/debug-server', (req, res) => {
+  const jobs = Array.from(activeJobs.values()).map(j => ({
+    id: j.id,
+    status: j.status,
+    error: j.error || null,
+    resultsCount: j.results?.length || 0,
+    categories: j.categories,
+    location: j.location,
+    startedAt: j.startedAt
+  }));
+  res.json({
+    uptime: process.uptime(),
+    jobs,
+    memory: process.memoryUsage()
   });
 });
 
@@ -484,7 +514,7 @@ app.get('/api/stream/:jobId', (req, res) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
-  sendEvent('connected', { jobId, status: job.status });
+  sendEvent('connected', { jobId, status: job.status, error: job.error || null });
 
   if (job.results.length > 0) {
     job.results.forEach(place => sendEvent('place', place));

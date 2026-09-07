@@ -91,17 +91,6 @@ class GoogleMapsScraper extends EventEmitter {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
       );
 
-      // Блокування важких ресурсів для максимальної швидкодії
-      await this.page.setRequestInterception(true);
-      this.page.on('request', req => {
-        const resourceType = req.resourceType();
-        if (['image', 'media', 'font'].includes(resourceType)) {
-          req.abort();
-        } else {
-          req.continue();
-        }
-      });
-
       // Встановлення cookies згоди Google для уникнення блокування у Європі (Render Frankfurt)
       try {
         await this.page.setCookie(
@@ -125,20 +114,38 @@ class GoogleMapsScraper extends EventEmitter {
         const url = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}?hl=uk`;
         await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 35000 });
 
-        // Обробка вікна згоди Google (cookies / consent) якщо з'явиться
+        // Обробка вікна або сторінки згоди Google (cookies / consent) у європейському регіоні
         try {
-          const consentButtons = await this.page.$$(
-            'button[aria-label*="Прийняти" i], button[aria-label*="Accept" i], button[aria-label*="akzeptieren" i], button[aria-label*="Zustimmen" i], form[action*="consent"] button'
-          );
-          for (const btn of consentButtons) {
-            await btn.click().catch(() => {});
-            await delay(400);
+          await delay(800);
+          const isConsent = await this.page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button, form[action*="consent"] button, input[type="submit"]'));
+            for (const b of buttons) {
+              const txt = (b.innerText || b.textContent || b.getAttribute('aria-label') || b.value || '').toLowerCase();
+              if (
+                txt.includes('прийняти') ||
+                txt.includes('погодитися') ||
+                txt.includes('accept all') ||
+                txt.includes('i agree') ||
+                txt.includes('alle akzeptieren') ||
+                txt.includes('zustimmen') ||
+                txt.includes('tout accepter')
+              ) {
+                b.click();
+                return true;
+              }
+            }
+            return false;
+          }).catch(() => false);
+
+          if (isConsent || this.page.url().includes('consent.google.com')) {
+            await this.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+            await delay(1200);
           }
         } catch (e) {}
 
-        // Очікування карток у стрічці
+        // Очікування карток у стрічці (з запасом часу для повільних серверів)
         try {
-          await this.page.waitForSelector('a.hfpxzc', { timeout: 12000 });
+          await this.page.waitForSelector('a.hfpxzc, div[role="feed"]', { timeout: 30000 });
         } catch (e) {
           this.emit('log', {
             level: 'warn',

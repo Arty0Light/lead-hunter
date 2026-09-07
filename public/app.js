@@ -88,6 +88,7 @@ const callStatusFilter = document.getElementById('callStatusFilter');
 const exportXlsxBtn = document.getElementById('exportXlsxBtn');
 const exportCsvBtn = document.getElementById('exportCsvBtn');
 const copyPhonesBtn = document.getElementById('copyPhonesBtn');
+const syncDatabaseBtn = document.getElementById('syncDatabaseBtn');
 const adminClearDatabaseBtn = document.getElementById('adminClearDatabaseBtn');
 
 // DOM Elements: Note / Comment Modal
@@ -818,6 +819,35 @@ function setupEventListeners() {
   exportXlsxBtn.addEventListener('click', () => triggerExport('xlsx'));
   exportCsvBtn.addEventListener('click', () => triggerExport('csv'));
   copyPhonesBtn.addEventListener('click', handleCopyAllPhones);
+
+  if (syncDatabaseBtn) {
+    syncDatabaseBtn.addEventListener('click', async () => {
+      syncDatabaseBtn.disabled = true;
+      syncDatabaseBtn.classList.add('opacity-50');
+      showToast('Синхронізація лідів та статусів дзвінків із сервером...', 'info', 'Оновлення бази', 1800);
+      await loadSavedLeads();
+      syncDatabaseBtn.disabled = false;
+      syncDatabaseBtn.classList.remove('opacity-50');
+      showToast(`Базу оновлено! Усього лідів у системі: ${allPlaces.length}`, 'success', 'Синхронізовано', 2500);
+    });
+  }
+
+  // Автоматична синхронізація при поверненні на вкладку (Focus Sync)
+  window.addEventListener('focus', () => {
+    const isRunning = currentJobId && eventSource && eventSource.readyState === EventSource.OPEN;
+    if (!isRunning) {
+      loadSavedLeads();
+    }
+  });
+
+  // Фонове оновлення кожні 45 секунд, щоб бачити дзвінки та нотатки колег
+  setInterval(() => {
+    const isRunning = currentJobId && eventSource && eventSource.readyState === EventSource.OPEN;
+    if (!isRunning) {
+      loadSavedLeads();
+    }
+  }, 45000);
+
   if (adminClearDatabaseBtn) {
     adminClearDatabaseBtn.addEventListener('click', handleClearDatabase);
   }

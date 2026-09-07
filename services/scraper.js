@@ -193,58 +193,38 @@ class GoogleMapsScraper extends EventEmitter {
               status: `[Категорія ${catIndex + 1}/${catList.length}: ${currentCat}] Обробка картки...`
             });
 
-            // 1. Прокрутка картки у видиму зону
+            // 1. Прокрутка картки у видиму зону та DOM-клік для гарантованого відкриття деталей
             await this.page.evaluate(el => {
               el.scrollIntoView({ behavior: 'instant', block: 'center' });
+              el.click();
             }, card);
-            await delay(150);
 
-            // 2. Реальний клік мишею по координатах картки
-            let clicked = false;
-            try {
-              const box = await card.boundingBox();
-              if (box && box.width > 0 && box.height > 0) {
-                await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-                clicked = true;
-              }
-            } catch (e) {}
-
-            if (!clicked) {
-              try {
-                await card.click({ delay: 30 });
-                clicked = true;
-              } catch (e) {
-                await this.page.evaluate(el => el.click(), card);
-              }
-            }
-
-            // 3. Очікування оновлення та завантаження панелі деталей
+            // 2. Очікування оновлення панелі деталей (перевіряємо h1 або контакти)
             let detailsLoaded = false;
-            for (let waitStep = 0; waitStep < 16; waitStep++) {
-              await delay(180);
+            for (let waitStep = 0; waitStep < 18; waitStep++) {
+              await delay(200);
 
-              const hasDetail = await this.page.evaluate(() => {
+              const isMatch = await this.page.evaluate((expectedName) => {
+                const h1 = document.querySelector('h1.DUwDvf');
+                if (h1 && h1.innerText.trim().toLowerCase() === expectedName.toLowerCase()) {
+                  return true;
+                }
                 const phone = document.querySelector('button[data-item-id^="phone:"]');
                 const address = document.querySelector('button[data-item-id="address"]');
                 const website = document.querySelector('a[data-item-id="authority"]');
-                const h1 = document.querySelector('h1.DUwDvf');
-                return !!(phone || address || website || (h1 && h1.innerText.trim()));
-              });
+                return !!(phone || address || website);
+              }, cardMeta.name);
 
-              if (hasDetail) {
+              if (isMatch) {
                 detailsLoaded = true;
                 break;
               }
 
-              // Повторний клік при повільному завантаженні (Render Free Tier)
-              if (waitStep === 6) {
+              // Запасна спроба кліку, якщо панель ще не відреагувала
+              if (waitStep === 6 || waitStep === 12) {
                 try {
-                  const box = await card.boundingBox();
-                  if (box) {
-                    await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-                  } else {
-                    await this.page.evaluate(el => el.click(), card);
-                  }
+                  await card.click().catch(() => {});
+                  await this.page.evaluate(el => el.click(), card).catch(() => {});
                 } catch (e) {}
               }
             }

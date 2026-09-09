@@ -1,6 +1,12 @@
 // Client-side Application Logic for Google Maps Lead Finder
 // Supports Multi-Category, Persistent Storage, Call Tracking, User Auth & Admin Panel
 
+// Backend API Base URL:
+// When running on Vercel or custom domain, direct API calls to the Render backend (which has Chromium & persistent disk)
+const API_BASE = (window.location.hostname.includes('vercel.app') || (window.location.hostname !== 'localhost' && !window.location.hostname.includes('onrender.com') && !window.location.hostname.includes('127.0.0.1')))
+  ? 'https://lead-hunter-8w18.onrender.com'
+  : '';
+
 let currentJobId = null;
 let eventSource = null;
 let allPlaces = [];
@@ -349,7 +355,7 @@ function mergeServerAndLocalLeads(serverLeads) {
 async function syncLeadsToServer(leads) {
   if (!leads || leads.length === 0) return;
   try {
-    await fetch('/api/leads/sync', {
+    await fetch(`${API_BASE}/api/leads/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -411,9 +417,11 @@ function hideUserNameModal() {
 
 async function registerUserOnServer(name) {
   try {
-    await fetch('/api/auth/register-user', {
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentAppSecret) headers['x-app-secret'] = currentAppSecret;
+    await fetch(`${API_BASE}/api/auth/register-user`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ name })
     });
   } catch (e) {}
@@ -484,7 +492,7 @@ adminLoginForm.addEventListener('submit', async (e) => {
   const password = adminPasswordInput.value.trim();
 
   try {
-    const res = await fetch('/api/admin/login', {
+    const res = await fetch(`${API_BASE}/api/admin/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
@@ -507,7 +515,7 @@ adminLogoutBtn.addEventListener('click', async () => {
   const token = sessionStorage.getItem('leadHunter_adminToken');
   if (token) {
     try {
-      await fetch('/api/admin/logout', {
+      await fetch(`${API_BASE}/api/admin/logout`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -527,7 +535,7 @@ async function loadAdminStats() {
   }
 
   try {
-    const res = await fetch('/api/admin/stats', {
+    const res = await fetch(`${API_BASE}/api/admin/stats`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
 
@@ -622,7 +630,7 @@ async function loadSavedLeads() {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const res = await fetch('/api/leads', { headers });
+    const res = await fetch(`${API_BASE}/api/leads`, { headers });
     if (res.ok) {
       const data = await res.json();
       const serverLeads = Array.isArray(data.leads) ? data.leads : [];
@@ -657,7 +665,7 @@ async function loadSavedLeads() {
 // 4. Пресети категорій та областей
 async function loadPresets() {
   try {
-    const res = await fetch('/api/presets');
+    const res = await fetch(`${API_BASE}/api/presets`);
     presetsData = await res.json();
 
     if (presetsData.categories) {
@@ -902,7 +910,7 @@ async function handleStartSearch(e) {
   progressStats.textContent = `Оброблено: 0 | Знайдено: 0`;
 
   try {
-    const res = await fetch('/api/search', {
+    const res = await fetch(`${API_BASE}/api/search`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -978,7 +986,7 @@ async function handleStartSearch(e) {
 function connectToStream(jobId, limitTarget, totalCats) {
   if (eventSource) eventSource.close();
 
-  eventSource = new EventSource(`/api/stream/${jobId}`);
+  eventSource = new EventSource(`${API_BASE}/api/stream/${jobId}`);
 
   eventSource.addEventListener('progress', (e) => {
     const data = JSON.parse(e.data);
@@ -1029,7 +1037,7 @@ async function handleStopSearch() {
   try {
     statusText.textContent = 'Зупинка пошуку...';
     const target = currentJobId || 'all';
-    await fetch(`/api/stop/${target}`, { 
+    await fetch(`${API_BASE}/api/stop/${target}`, { 
       method: 'POST',
       headers: {
         'x-app-secret': currentAppSecret || '',
@@ -1102,9 +1110,13 @@ window.handleStatusChange = async function(id, newStatus) {
   }
 
   try {
-    const res = await fetch(`/api/leads/${id}/call`, {
+    const res = await fetch(`${API_BASE}/api/leads/${id}/call`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-app-secret': currentAppSecret || '',
+        'x-user-name': encodeURIComponent(currentUserName || 'User')
+      },
       body: JSON.stringify({ 
         status: newStatus,
         userName: currentUserName 
@@ -1171,9 +1183,13 @@ async function handleSaveNoteModal(e) {
   closeNoteModal();
 
   try {
-    const res = await fetch(`/api/leads/${id}/call`, {
+    const res = await fetch(`${API_BASE}/api/leads/${id}/call`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-app-secret': currentAppSecret || '',
+        'x-user-name': encodeURIComponent(currentUserName || 'User')
+      },
       body: JSON.stringify({ 
         notes: noteText,
         userName: currentUserName 
@@ -1213,7 +1229,7 @@ async function handleClearDatabase() {
   if (!confirmed) return;
 
   try {
-    const res = await fetch('/api/leads', { 
+    const res = await fetch(`${API_BASE}/api/leads`, { 
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -1534,7 +1550,7 @@ function triggerExport(format) {
   if (currentAppSecret) queryParams.set('secret', currentAppSecret);
   if (token) queryParams.set('adminToken', token);
 
-  const url = `/api/export/${format}?${queryParams.toString()}`;
+  const url = `${API_BASE}/api/export/${format}?${queryParams.toString()}`;
   window.open(url, '_blank');
   showToast(`Файл ${format.toUpperCase()} формується та завантажується...`, 'info', 'Експорт бази');
 }

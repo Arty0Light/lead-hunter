@@ -16,3 +16,5 @@ npm-debug.log*
 # Тимчасові тестові файли
 test_*.xlsx
 test_*.csv
+.vercel
+.env*

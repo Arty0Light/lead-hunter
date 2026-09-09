@@ -1,0 +1,21 @@
+{
+  "services": {
+    "lead-hunter": {
+      "root": ".",
+      "entrypoint": "server.js"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://lead-hunter-8w18.onrender.com/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "lead-hunter"
+      }
+    }
+  ]
+}
